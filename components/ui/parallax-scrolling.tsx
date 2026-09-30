@@ -51,7 +51,9 @@ export function ParallaxComponent() {
     return () => {
       // Clean up GSAP and ScrollTrigger instances
       ScrollTrigger.getAll().forEach(st => st.kill());
-      gsap.killTweensOf(triggerElement);
+if (triggerElement) {
+  gsap.killTweensOf(triggerElement);
+}
       lenis.destroy();
     };
   }, []);
