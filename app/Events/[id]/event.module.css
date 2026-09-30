@@ -1,0 +1,664 @@
+/* app/Events/[id]/event.module.css
+   Own stylesheet on purpose: this page must not depend on Tailwind generating classes.
+
+   Direction: the event photo is the one memorable thing. It is shown WHOLE (never cropped),
+   framed on a dark indigo stage and lit by a blurred copy of itself. Everything else is quiet:
+   a light lavender sheet, one accent (the site's violet), hairline rules instead of card boxes.
+
+   Layout: details + description are a normal static block (nothing sticky). Moments is a
+   full-width 16:9 grid below. Mobile-first. */
+
+.page {
+  --night: #0a0820;
+  --violet: #5b2bff;
+  --violet-soft: #ece8ff;
+  --paper: #f7f5fc;
+  --ink: #17132f;
+  --muted: #625d7e;
+  --line: #e4dff2;
+  --tile: #e7e2f6;
+
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+.wrap {
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+/* ============ loading / not found ============ */
+.fullscreen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  text-align: center;
+  background: #0a0820;
+  color: #fff;
+}
+.dots {
+  display: flex;
+  gap: 0.75rem;
+}
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  animation: bounce 1s infinite;
+}
+.dot:nth-child(2) { animation-delay: 0.15s; }
+.dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-0.5rem); }
+}
+.notFoundTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.notFoundText {
+  margin: 0 0 2rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+.pill:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* ============ hero ============ */
+.hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--night);
+  color: #fff;
+  padding: 6rem 1.25rem 5rem;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  font-size: 0.925rem;
+  color: rgba(255, 255, 255, 0.65);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.back:hover { color: #fff; }
+
+.title {
+  margin: 1.25rem 0 1rem;
+  max-width: 17em;
+  font-size: clamp(2rem, 8vw, 5.25rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.chip {
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.92);
+}
+.chipAccent {
+  border-color: rgba(164, 143, 255, 0.5);
+  background: rgba(91, 43, 255, 0.3);
+  color: #e0daff;
+}
+
+/* the stage: full, uncropped photo + glow taken from the photo itself */
+.stage {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-top: 2rem;
+}
+.glow {
+  position: absolute;
+  inset: -12% -8%;
+  z-index: 0;
+  background-position: center;
+  background-size: cover;
+  filter: blur(56px) saturate(1.6);
+  opacity: 0;
+  transition: opacity 1.4s ease;
+  pointer-events: none;
+}
+.glowOn { opacity: 0.6; }
+
+.frame {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 1rem;
+  line-height: 0;
+  background: #000;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 30px 70px -25px rgba(0, 0, 0, 0.7);
+}
+/* width/height auto + both max limits keeps the true aspect ratio: nothing is ever cropped */
+.photo {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 70vh;
+  max-height: min(70dvh, 900px);
+}
+
+.skeleton {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 64rem;
+  aspect-ratio: 16 / 10;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.07);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.fallback {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 64rem;
+  aspect-ratio: 16 / 10;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.95rem;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ============ light sheet ============ */
+.sheet {
+  position: relative;
+  margin-top: -2rem;
+  padding: 2.5rem 1.25rem 4rem;
+  border-radius: 1.75rem 1.75rem 0 0;
+  background: var(--paper);
+}
+
+/* details + description: plain static block, no sticky, scrolls with the page.
+   Mobile: stacked. Desktop: side by side (details left, description right). */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+/* ---------- details (hairline rules, no card box) ---------- */
+.asideTitle {
+  margin: 0 0 1.25rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem 1rem;
+  margin: 0;
+  padding: 0;
+}
+.detail {
+  display: flex;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.detailIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.6rem;
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+.detailText {
+  min-width: 0;
+}
+.detailLabel {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.detailValue {
+  margin: 0.15rem 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.detailSub {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* very small phones: one detail per row */
+@media (max-width: 380px) {
+  .details { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (min-width: 640px) {
+  .hero { padding: 7rem 1.5rem 6rem; }
+  .sheet { padding: 3rem 1.5rem 5rem; }
+  .detailValue { font-size: 1.1rem; }
+}
+
+/* tablet: details on top as a row, description below */
+@media (min-width: 768px) {
+  .details { grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1.5rem 2rem; }
+}
+
+/* desktop: details column + description column, both static */
+@media (min-width: 1024px) {
+  .layout {
+    grid-template-columns: 20rem minmax(0, 1fr);
+    gap: 4.5rem;
+  }
+  .details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .detail {
+    padding: 1.1rem 0;
+    border-top: 1px solid var(--line);
+  }
+  .detail:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+  .hero { padding: 7.5rem 1.5rem 6.5rem; }
+  .sheet { padding: 3.5rem 1.5rem 5rem; margin-top: -2.5rem; border-radius: 2rem 2rem 0 0; }
+}
+
+/* ---------- description ---------- */
+.h2 {
+  margin: 0;
+  font-size: clamp(1.5rem, 4vw, 2.1rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.about .h2 { margin-bottom: 1.25rem; }
+
+.lead {
+  margin: 0;
+  max-width: 34em;
+  font-size: clamp(1.15rem, 3.2vw, 1.35rem);
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.body {
+  margin: 1.25rem 0 0;
+  max-width: 40em;
+  font-size: 1.025rem;
+  line-height: 1.75;
+  color: #3f3a5c;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.lead + .body { margin-top: 1.5rem; }
+
+/* ---------- moments: strict 16:9 grid ---------- */
+.moments {
+  margin-top: 3.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--line);
+}
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.count {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+/* phones: 2 columns, tablet and up: 3 columns */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .moments { margin-top: 4.5rem; padding-top: 3rem; }
+}
+
+.tile {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.7rem;
+  overflow: hidden;
+  background: var(--tile);
+  cursor: zoom-in;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (min-width: 768px) {
+  .tile { border-radius: 0.9rem; }
+}
+.tileLoading {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+/* blurred backdrop: fills the tile, only visible where the photo doesn't reach */
+.tileBlur {
+  position: absolute;
+  inset: -12%;
+  background-position: center;
+  background-size: cover;
+  filter: blur(18px) saturate(1.3) brightness(0.9);
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+.tileBlurOn { opacity: 1; }
+
+/* the photo: whole, centered, never cropped, never stretched */
+.tileImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+.tileImgOn { opacity: 1; }
+
+.tileBroken {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #a59dc9;
+}
+.tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 8, 32, 0);
+  transition: background 0.25s;
+  pointer-events: none;
+}
+.tile:hover::after { background: rgba(10, 8, 32, 0.2); }
+.tileZoom {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+.tile:hover .tileZoom,
+.tile:focus-visible .tileZoom {
+  opacity: 1;
+  transform: none;
+}
+@media (hover: none) {
+  .tileZoom { display: none; }
+}
+
+.loadMoreWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+.loadMore {
+  min-height: 2.9rem;
+  padding: 0.85rem 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.975rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.loadMore:hover {
+  border-color: var(--violet);
+  background: var(--violet);
+  color: #fff;
+}
+.loadMoreInfo {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+@media (max-width: 520px) {
+  .loadMore { width: 100%; }
+}
+
+.empty {
+  padding: 3rem 1.5rem;
+  border: 1px dashed #cbc4e6;
+  border-radius: 0.9rem;
+  text-align: center;
+  color: var(--muted);
+}
+.emptyIcon { margin: 0 auto 0.75rem; color: #a59dc9; }
+.emptyTitle {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+.emptyText {
+  margin: 0.35rem auto 0;
+  max-width: 24rem;
+  font-size: 0.95rem;
+}
+
+/* ============ lightbox ============ */
+.lb {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: rgba(6, 5, 20, 0.96);
+  color: #fff;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.lbTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  font-size: 0.925rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+.lbBtn {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.lbBtn:hover { background: rgba(255, 255, 255, 0.22); }
+.lbStage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.5rem;
+}
+.lbNav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: rgba(0, 0, 0, 0.45);
+}
+.lbPrev { left: 0.5rem; }
+.lbNext { right: 0.5rem; }
+.lbImg {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.lbImgOn { opacity: 1; }
+.spinner {
+  position: absolute;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 999px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* filmstrip: hidden on phones (swipe instead), shown from tablet up */
+.lbStrip {
+  display: none;
+  flex: none;
+  overflow-x: auto;
+  padding: 0.9rem 1.25rem 1.25rem;
+}
+.lbStripInner {
+  display: flex;
+  gap: 0.5rem;
+  width: max-content;
+  margin: 0 auto;
+}
+.lbThumb {
+  flex: none;
+  width: 4.5rem;
+  height: 3.1rem;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 0.45rem;
+  overflow: hidden;
+  background: #1c1934;
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+.lbThumb:hover { opacity: 0.85; }
+.lbThumbOn {
+  opacity: 1;
+  border-color: #fff;
+}
+.lbThumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (min-width: 768px) {
+  .lbTop { padding: 1rem 1.25rem; }
+  .lbStage { padding: 0 5rem; }
+  .lbNav { width: 2.75rem; height: 2.75rem; background: rgba(255, 255, 255, 0.1); }
+  .lbPrev { left: 1.25rem; }
+  .lbNext { right: 1.25rem; }
+  .lbStrip { display: block; }
+}
+
+/* ============ focus + motion ============ */
+.back:focus-visible,
+.loadMore:focus-visible,
+.tile:focus-visible,
+.pill:focus-visible {
+  outline: 3px solid #8f78ff;
+  outline-offset: 3px;
+}
+.lbBtn:focus-visible,
+.lbThumb:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page *, .fullscreen * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

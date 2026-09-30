@@ -1,0 +1,22 @@
+/* components/admin/adminModal.module.css
+   Scrollbar for the scrolling body of admin modals.
+   A CSS module is used on purpose so it never depends on Tailwind generating classes. */
+.scroll {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+.scroll::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+}
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 9999px;
+}
+.scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
