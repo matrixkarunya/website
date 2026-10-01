@@ -38,10 +38,6 @@ const PageBackground = memo(function PageBackground() {
         waveSpeed={0.05}
       />
       <div className="absolute inset-0 bg-black/50 z-10" />
-      {/* Lighter blur on small screens — backdrop-filter blur is one of the
-          most expensive paint operations on mobile GPUs, and stacking it
-          with the Dither canvas underneath is what makes the page feel
-          sluggish on phones. */}
       <div className="absolute inset-0 backdrop-blur-sm sm:backdrop-blur-sm bg-white/[0.03] z-20" />
     </div>
   );
@@ -79,7 +75,7 @@ function Author({
 }) {
   const dim = size === "md" ? 44 : 40;
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 min-w-0">
       {testimony.imageUrl ? (
         <Image
           src={testimony.imageUrl}
@@ -109,17 +105,15 @@ function Author({
           {testimony.name.charAt(0)}
         </div>
       )}
-      <div>
+      <div className="min-w-0">
         <p
-          className={`font-bold text-white leading-tight ${
-            size === "md" ? "text-sm" : "text-sm"
-          }`}
+          className="text-sm font-bold text-white leading-tight truncate"
           style={{ textShadow }}
         >
           {testimony.name}
         </p>
         <p
-          className="text-xs leading-tight"
+          className="text-xs leading-tight truncate"
           style={{ color: "rgba(255,255,255,0.48)" }}
         >
           {testimony.role}
@@ -130,6 +124,8 @@ function Author({
 }
 
 // ── Full-text Modal ────────────────────────────────────────────────────────────
+// Fixed height: every modal is the same size whatever the quote length.
+// Short quotes leave breathing room; long quotes scroll inside the body.
 function TestimonyModal({
   testimony,
   onClose,
@@ -143,9 +139,7 @@ function TestimonyModal({
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handler);
-    // Lock background scroll while modal is open — prevents the page (and
-    // its animated background) from scrolling/repainting behind the modal
-    // on mobile, which is a common source of jank.
+    // Lock background scroll while modal is open
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
@@ -175,7 +169,7 @@ function TestimonyModal({
               backdropFilter: "blur(20px)",
               boxShadow:
                 "0 32px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.15)",
-              maxHeight: "85vh",
+              height: "min(85vh, 34rem)",
             }}
             initial={{ opacity: 0, scale: 0.95, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -201,8 +195,8 @@ function TestimonyModal({
               </button>
             </div>
 
-            {/* Scrollable quote body */}
-            <div className="testimony-modal-scroll flex-1 overflow-y-auto px-5 sm:px-6 py-5">
+            {/* Scrollable quote body (fills the remaining height) */}
+            <div className="testimony-modal-scroll flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-5">
               <Paragraphs
                 text={testimony.quote}
                 className="text-sm md:text-[15px] leading-[1.85]"
@@ -253,6 +247,9 @@ function TestimonyModal({
 }
 
 // ── Testimony Card ─────────────────────────────────────────────────────────────
+// Fixed height: every card is identical in size. The quote is clamped to 4
+// lines; the author row is single-line (truncates) so nothing can push the
+// layout taller or shorter.
 const TestimonyCard = memo(function TestimonyCard({
   testimony,
   index,
@@ -289,7 +286,7 @@ const TestimonyCard = memo(function TestimonyCard({
       tabIndex={0}
       onClick={handleOpen}
       onKeyDown={handleKeyDown}
-      className="relative flex flex-col gap-4 p-5 sm:p-6 rounded-3xl group cursor-pointer select-none active:scale-[0.98]"
+      className="relative flex flex-col gap-4 p-5 sm:p-6 rounded-3xl group cursor-pointer select-none active:scale-[0.98] h-[264px] sm:h-[280px]"
       style={{
         background: "rgba(255,255,255,0.10)",
         border: "1.5px solid rgba(255,255,255,0.20)",
@@ -305,19 +302,16 @@ const TestimonyCard = memo(function TestimonyCard({
       {/* Top edge highlight */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent rounded-t-3xl pointer-events-none" />
 
-      {/* Hover/active tint as a separate layer instead of animating the
-          parent's `background` on every hover frame — much cheaper to
-          composite, and works identically for mobile's tap/active state. */}
-      <div
-        className="absolute inset-0 rounded-3xl bg-white/5 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity duration-300 pointer-events-none"
-      />
+      {/* Hover/active tint as a separate layer (cheaper than animating the
+          parent's background on every hover frame). */}
+      <div className="absolute inset-0 rounded-3xl bg-white/5 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
       <Quote
         className="w-5 h-5 flex-shrink-0 relative"
         style={{ color: "rgba(255,255,255,0.25)" }}
       />
 
-      <div className="flex-1 relative">
+      <div className="flex-1 min-h-0 relative overflow-hidden">
         <p
           className="text-sm md:text-[15px] leading-[1.85]"
           style={{
@@ -353,7 +347,7 @@ const TestimonyCard = memo(function TestimonyCard({
       </div>
 
       <div
-        className="flex items-center gap-3 pt-3 relative"
+        className="flex items-center gap-3 pt-3 relative flex-shrink-0"
         style={{ borderTop: "1px solid rgba(255,255,255,0.10)" }}
       >
         {testimony.imageUrl ? (
@@ -382,11 +376,17 @@ const TestimonyCard = memo(function TestimonyCard({
             {testimony.name.charAt(0)}
           </div>
         )}
-        <div>
-          <p className="text-sm font-bold text-white" style={{ textShadow }}>
+        <div className="min-w-0">
+          <p
+            className="text-sm font-bold text-white truncate"
+            style={{ textShadow }}
+          >
             {testimony.name}
           </p>
-          <p className="text-xs" style={{ color: "rgba(255,255,255,0.48)" }}>
+          <p
+            className="text-xs truncate"
+            style={{ color: "rgba(255,255,255,0.48)" }}
+          >
             {testimony.role}
           </p>
         </div>

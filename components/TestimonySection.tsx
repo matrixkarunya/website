@@ -4,11 +4,15 @@ import { useState, useEffect, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import {
+  collection,
+  query,
+  orderBy,
+  limit,
+  onSnapshot,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Quote, ArrowRight, X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import Dither from "@/components/ui/Dither";
 
 interface Testimony {
   id: string;
@@ -21,36 +25,31 @@ interface Testimony {
 }
 
 const CHAR_LIMIT = 165;
+const PREVIEW_COUNT = 8; // cards that scroll on the home page
+const SECONDS_PER_CARD = 6; // keeps the marquee at a readable pace
 const textShadow = "0 2px 12px rgba(0,0,0,0.85), 0 1px 3px rgba(0,0,0,1)";
 
-// ── Section background — Dither canvas + dark mask + glass blur ──────────────
-// Scoped to this section only: `absolute inset-0` fills the section's own
-// bounds and scrolls with the page. (The Team page's version used `fixed`,
-// which is correct for a full-page background but would otherwise make this
-// cover the entire viewport instead of just this section.) Memoized so
-// Firestore snapshot updates elsewhere in the section don't re-render the
-// canvas.
-const SectionBackground = memo(function SectionBackground({
-  className,
-}: {
-  className?: string;
-}) {
+// ── Section background — same recipe as About / Events / Timeline ────────────
+// The page-level fixed Dither already renders behind every section, so no
+// extra WebGL canvas here: just the dark tint + ONE blur layer, plus the
+// radial vignette. Needs an `isolate` parent so the negative z-index layers
+// stay inside the section.
+const SectionBackground = memo(function SectionBackground() {
   return (
-    <div className={cn("absolute inset-0 w-full h-full -z-10 overflow-hidden", className)}>
-      <Dither
-        waveColor={[0.32, 0.15, 1]}
-        disableAnimation={false}
-        enableMouseInteraction
-        mouseRadius={0.3}
-        colorNum={4}
-        pixelSize={2}
-        waveAmplitude={0.3}
-        waveFrequency={3}
-        waveSpeed={0.05}
+    <>
+      <div aria-hidden className="absolute inset-0 w-full h-full -z-20 pointer-events-none">
+        <div className="absolute inset-0 bg-black/50" />
+        <div className="absolute inset-0 backdrop-blur-sm bg-white/[0.03]" />
+      </div>
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.65) 100%)",
+        }}
       />
-      <div className="absolute inset-0 bg-black/50 z-10" />
-      <div className="absolute inset-0 backdrop-blur-sm bg-white/[0.03] z-20" />
-    </div>
+    </>
   );
 });
 
@@ -179,7 +178,7 @@ function TestimonyModal({
               backdropFilter: "blur(20px)",
               boxShadow:
                 "0 32px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.15)",
-              maxHeight: "85vh",
+              height: "min(85vh, 34rem)",
             }}
             initial={{ opacity: 0, scale: 0.95, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -203,7 +202,7 @@ function TestimonyModal({
               </button>
             </div>
 
-            <div className="testimony-modal-scroll flex-1 overflow-y-auto px-5 sm:px-6 py-5">
+            <div className="testimony-modal-scroll flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-5">
               <Paragraphs
                 text={testimony.quote}
                 className="text-sm md:text-[15px] leading-[1.85]"
@@ -289,11 +288,10 @@ const TestimonyCard = memo(function TestimonyCard({
       tabIndex={0}
       onClick={handleOpen}
       onKeyDown={handleKeyDown}
-      className={`relative flex flex-col gap-4 p-5 sm:p-6 rounded-3xl group cursor-pointer select-none active:scale-[0.98] ${
+      className={`relative flex flex-col gap-4 p-5 sm:p-6 rounded-3xl group cursor-pointer select-none active:scale-[0.98] h-[264px] sm:h-[280px] ${
         inLoop ? "flex-shrink-0 w-[280px] md:w-[320px]" : "w-full max-w-sm"
       }`}
       style={{
-        minHeight: 220,
         background: "rgba(255,255,255,0.10)",
         border: "1.5px solid rgba(255,255,255,0.20)",
         backdropFilter: "blur(20px)",
@@ -313,7 +311,7 @@ const TestimonyCard = memo(function TestimonyCard({
         style={{ color: "rgba(255,255,255,0.25)" }}
       />
 
-      <div className="flex-1 relative">
+      <div className="flex-1 min-h-0 relative overflow-hidden">
         <p
           className="text-sm md:text-[15px] leading-[1.85]"
           style={{
@@ -378,11 +376,17 @@ const TestimonyCard = memo(function TestimonyCard({
             {testimony.name.charAt(0)}
           </div>
         )}
-        <div>
-          <p className="text-sm font-bold text-white" style={{ textShadow }}>
+        <div className="min-w-0">
+          <p
+            className="text-sm font-bold text-white truncate"
+            style={{ textShadow }}
+          >
             {testimony.name}
           </p>
-          <p className="text-xs" style={{ color: "rgba(255,255,255,0.48)" }}>
+          <p
+            className="text-xs truncate"
+            style={{ color: "rgba(255,255,255,0.48)" }}
+          >
             {testimony.role}
           </p>
         </div>
@@ -396,14 +400,22 @@ export default function TestimonySection() {
   const [testimonies, setTestimonies] = useState<Testimony[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [activeTestimony, setActiveTestimony] = useState<Testimony | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, "testimonies"), orderBy("order", "asc"));
+    // Ask for one extra document so we know whether "View More" is needed
+    // without downloading the whole collection.
+    const q = query(
+      collection(db, "testimonies"),
+      orderBy("order", "asc"),
+      limit(PREVIEW_COUNT + 1)
+    );
     const unsub = onSnapshot(q, (snap) => {
       const data: Testimony[] = [];
       snap.forEach((doc) => data.push({ id: doc.id, ...doc.data() } as Testimony));
-      setTestimonies(data);
+      setHasMore(data.length > PREVIEW_COUNT);
+      setTestimonies(data.slice(0, PREVIEW_COUNT));
       setLoading(false);
     });
     return () => unsub();
@@ -418,7 +430,7 @@ export default function TestimonySection() {
   // rather than flows), looped scroll for 3+.
   const isStatic = testimonies.length <= 2;
   const isLoop = !isStatic;
-  const showViewMore = testimonies.length > 4;
+  const showViewMore = hasMore;
 
   // Duplicate enough times to fill a smooth, seamless loop even with just 3–4
   // cards. The track scrolls by exactly 1/3 of its width, so 3 copies is the
@@ -426,7 +438,7 @@ export default function TestimonySection() {
   const loopItems = isLoop ? [...testimonies, ...testimonies, ...testimonies] : [];
 
   return (
-    <section className="relative w-full py-12 md:py-16 overflow-hidden">
+    <section className="relative w-full isolate overflow-hidden py-12 md:py-16">
       <SectionBackground />
 
       <style>{`
@@ -499,7 +511,7 @@ export default function TestimonySection() {
           </div>
         ) : (
           <div className="relative">
-            {/* Edge fades — matched to the section's own dark Dither backdrop */}
+            {/* Edge fades — matched to the section's dark backdrop */}
             <div
               className="absolute left-0 top-0 bottom-0 w-12 sm:w-20 md:w-32 z-10 pointer-events-none"
               style={{
@@ -517,7 +529,12 @@ export default function TestimonySection() {
               onMouseEnter={() => setIsPaused(true)}
               onMouseLeave={() => setIsPaused(false)}
             >
-              <div className={`flex gap-4 testimony-track ${isPaused ? "paused" : ""}`}>
+              <div
+                className={`flex gap-4 testimony-track ${isPaused ? "paused" : ""}`}
+                style={{
+                  animationDuration: `${testimonies.length * SECONDS_PER_CARD}s`,
+                }}
+              >
                 {loopItems.map((t, i) => (
                   <TestimonyCard
                     key={`${t.id}-${i}`}
@@ -554,6 +571,9 @@ export default function TestimonySection() {
           </Link>
         </div>
       )}
+
+      {/* Full-quote modal (opens when a card is clicked) */}
+      <TestimonyModal testimony={activeTestimony} onClose={handleClose} />
     </section>
   );
 }

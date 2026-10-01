@@ -4,8 +4,10 @@ import dynamic from "next/dynamic";
 import AboutSection from "@/components/About";
 import HeroSection from "@/components/HeroSection";
 import TestimonySection from "@/components/TestimonySection";
-
+import EventsSection from "@/components/EventsSection";
 // Loads after first paint; never blocks content
+import TimelineSection from "@/components/TimelineSection";
+
 const Dither = dynamic(() => import("@/components/ui/Dither"), {
   ssr: false,
   loading: () => null,
@@ -62,14 +64,10 @@ export default function Home() {
       >
         <HeroSection />
         <AboutSection />
+<TimelineSection />
 
-        <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 md:px-8 lg:px-12 py-12 sm:py-16 md:py-20">
-          <div className="max-w-6xl w-full mx-auto">
-            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-8 sm:mb-10 md:mb-12 text-center leading-tight">
-              Our Events
-            </h2>
-          </div>
-        </section>
+       <EventsSection />
+
 
         <TestimonySection />
       </main>
