@@ -1,7 +1,5 @@
-// components/TimelineSection.tsx
 "use client";
-
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect, useMemo, memo } from "react";
 import {
   motion,
   useScroll,
@@ -12,79 +10,36 @@ import {
   MotionValue,
 } from "framer-motion";
 import { ArrowRight } from "lucide-react";
-
-// ───────────────────────── Content ─────────────────────────
-// Edit this array to change the story. Event counts drive the live
-// "events so far" counter (it adds them up as you move through the years).
-const CHAPTERS = [
-  {
-    year: "2023",
-    academicYear: "Academic Year 2023–24",
-    chapter: "Chapter 01 · The Beginning",
-    title: "Born as AIMS",
-    body: "A small group of students came together and founded AIMS — the seed of everything that followed. Year one: 4 events.",
-    events: 4,
-  },
-  {
-    year: "2024",
-    academicYear: "Academic Year 2024–25",
-    chapter: "Chapter 02 · Growth",
-    title: "Finding Our Rhythm",
-    body: "Momentum. More workshops, more members, and a clearer sense of what the community wanted to become. 6 events.",
-    events: 6,
-  },
-  {
-    year: "2025",
-    academicYear: "Academic Year 2025–26",
-    chapter: "Chapter 03 · The Rebrand",
-    title: "AIMS Becomes MATRIX",
-    body: "Reborn as MATRIX and inaugurated on 2nd September 2025. The new identity brought our biggest year yet: 27 events.",
-    events: 27,
-    badge: "Rebrand",
-  },
-  {
-    year: "2026",
-    academicYear: "Academic Year 2026–27",
-    chapter: "Chapter 04 · Today",
-    title: "Still Accelerating",
-    body: "Already 9 events into the year, and the calendar keeps filling up. The story is still being written.",
-    events: 9,
-  },
-] as const;
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import {
+  buildChapters,
+  REBRAND_YEAR,
+  type Chapter,
+  type TimelineEntry,
+} from "@/lib/timeline";
 
 // ───────────────────────── Config ─────────────────────────
 const ACCENT = "#8272f0";
-const PANELS = CHAPTERS.length + 1; // intro + one per year
-const LAST = PANELS - 1;
-
-// Scroll budget, measured in "panels of scroll" (1 unit = --per of page scroll)
-const REST_UNITS = 0.4; // rest on 2026 before leaving
-const EXIT_UNITS = 1; // scroll spent blurring out into Events
-const TOTAL_UNITS = LAST + REST_UNITS + EXIT_UNITS;
-const SLIDE_END = LAST / TOTAL_UNITS; // progress where the last slide lands
-const EXIT_START = (LAST + REST_UNITS) / TOTAL_UNITS; // progress where blur-out begins
-const HOLD = 0.3; // share of each step where a panel rests before sliding
-const MAX_BLUR_PX = 22;
-
-const textShadow = "0 2px 16px rgba(0,0,0,0.9), 0 1px 4px rgba(0,0,0,1)";
-
-// Cumulative event counts for each panel: [0, 4, 10, 37, 46]
-const COUNTS = CHAPTERS.reduce<number[]>(
-  (acc, c) => [...acc, acc[acc.length - 1] + c.events],
-  [0]
-);
+const REST_UNITS = 0.5; // rest on the last year before leaving
+const EXIT_UNITS = 1; // scroll spent fading out into Events
+const HOLD = 0.25; // share of each step where a panel rests before sliding
+const MAX_BLUR_PX: number = 8;
+const textShadow = "0 2px 10px rgba(0,0,0,0.85), 0 1px 3px rgba(0,0,0,1)";
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
-// Maps raw scroll progress (0..1) to a panel position (0..LAST) with a rest
-// at every panel and a smoothstep slide in between.
-function positionAt(p: number) {
-  const q = clamp01(p / SLIDE_END);
-  if (q >= 1) return LAST;
-  const seg = q * LAST;
-  const k = Math.floor(seg);
-  const t = clamp01((seg - k - HOLD) / (1 - HOLD));
-  return k + t * t * (3 - 2 * t);
+// Smootherstep: zero velocity AND acceleration at both ends.
+const smoother = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+
+// Tracks the rounded panel index and only re-renders the caller.
+function useActivePanel(pos: MotionValue<number>) {
+  const [active, setActive] = useState(() => Math.round(pos.get()));
+  useMotionValueEvent(pos, "change", (v) => {
+    const r = Math.round(v);
+    setActive((prev) => (prev === r ? prev : r));
+  });
+  return active;
 }
 
 // ───────────────────────── Pieces ─────────────────────────
@@ -111,12 +66,20 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function IntroPanel({ pos }: { pos: MotionValue<number> }) {
+const IntroPanel = memo(function IntroPanel({
+  pos,
+  panels,
+  endYear,
+}: {
+  pos: MotionValue<number>;
+  panels: number;
+  endYear: string;
+}) {
   const opacity = useTransform(pos, (v) => Math.max(0, 1 - v * 1.1));
   return (
     <div
       className="relative h-full flex-shrink-0"
-      style={{ width: `${100 / PANELS}%` }}
+      style={{ width: `${100 / panels}%` }}
     >
       <motion.div
         style={{ opacity }}
@@ -126,7 +89,7 @@ function IntroPanel({ pos }: { pos: MotionValue<number> }) {
           className="mb-4 sm:mb-5 text-[11px] sm:text-sm tracking-[0.35em] sm:tracking-[0.4em] text-white/55"
           style={{ textShadow }}
         >
-          2023 → 2026
+          2023 → {endYear}
         </p>
         <h2
           className="font-black leading-[0.95] tracking-tight text-white"
@@ -147,26 +110,27 @@ function IntroPanel({ pos }: { pos: MotionValue<number> }) {
       </motion.div>
     </div>
   );
-}
+});
 
-function YearPanel({
+const YearPanel = memo(function YearPanel({
   chapter,
   index,
+  panels,
   pos,
 }: {
-  chapter: (typeof CHAPTERS)[number];
+  chapter: Chapter;
   index: number; // panel index (intro is 0)
+  panels: number;
   pos: MotionValue<number>;
 }) {
   const opacity = useTransform(pos, (v) =>
     Math.max(0, 1 - Math.abs(v - index) * 1.1)
   );
-  const badge = "badge" in chapter ? chapter.badge : undefined;
 
   return (
     <div
       className="relative h-full flex-shrink-0"
-      style={{ width: `${100 / PANELS}%` }}
+      style={{ width: `${100 / panels}%` }}
     >
       {/* Year */}
       <motion.h3
@@ -187,7 +151,7 @@ function YearPanel({
         style={{
           top: "var(--line-y)",
           background: ACCENT,
-          boxShadow: `0 0 0 6px ${ACCENT}22, 0 0 28px 6px ${ACCENT}88`,
+          boxShadow: `0 0 0 5px ${ACCENT}22, 0 0 16px 3px ${ACCENT}88`,
         }}
       />
 
@@ -198,10 +162,10 @@ function YearPanel({
           opacity,
           top: "calc(var(--line-y) + 1.5rem)",
           width: "min(88vw, 32rem)",
-          background: "rgba(14,11,34,0.72)",
+          background: "rgba(14,11,34,0.78)",
           border: "1px solid rgba(255,255,255,0.12)",
           boxShadow:
-            "0 24px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08)",
+            "0 12px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
         }}
       >
         <Pill>{chapter.chapter}</Pill>
@@ -211,7 +175,7 @@ function YearPanel({
         >
           {chapter.title}
         </h4>
-        <p className="mt-2 sm:mt-3 text-[13px] sm:text-sm md:text-[15px] leading-[1.65] sm:leading-[1.7] text-white/65">
+        <p className="mt-2 sm:mt-3 text-[13px] sm:text-sm md:text-[15px] leading-[1.65] sm:leading-[1.7] text-white/65 break-words">
           {chapter.body}
         </p>
         <div className="mt-4 sm:mt-5 flex items-center justify-between gap-3">
@@ -226,7 +190,7 @@ function YearPanel({
               Events
             </span>
           </div>
-          {badge && (
+          {chapter.badge && (
             <span
               className="rounded-full border px-3 py-1 sm:px-4 sm:py-1.5 text-[9px] sm:text-[11px] font-bold tracking-[0.18em] sm:tracking-[0.22em] uppercase text-white"
               style={{
@@ -234,67 +198,162 @@ function YearPanel({
                 background: "rgba(255,255,255,0.05)",
               }}
             >
-              {badge}
+              {chapter.badge}
             </span>
           )}
         </div>
       </motion.div>
     </div>
   );
-}
+});
 
-// ───────────────────────── Section ─────────────────────────
-export default function TimelineSection() {
+const ActiveLabel = memo(function ActiveLabel({
+  pos,
+  chapters,
+  endYear,
+}: {
+  pos: MotionValue<number>;
+  chapters: Chapter[];
+  endYear: string;
+}) {
+  const active = useActivePanel(pos);
+  return (
+    <motion.p
+      key={active}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="pl-1 text-xs sm:text-sm md:text-base font-semibold text-white/65"
+      style={{ textShadow }}
+    >
+      {active === 0
+        ? `2023 → ${endYear}`
+        : chapters[Math.min(active, chapters.length) - 1].academicYear}
+    </motion.p>
+  );
+});
+
+const YearTicks = memo(function YearTicks({
+  pos,
+  chapters,
+}: {
+  pos: MotionValue<number>;
+  chapters: Chapter[];
+}) {
+  const active = useActivePanel(pos);
+  return (
+    <div className="mb-2 sm:mb-3 flex justify-between text-[10px] sm:text-[11px] md:text-xs tracking-[0.25em] sm:tracking-[0.3em]">
+      {chapters.map((c, i) => (
+        <span
+          key={c.year}
+          className="transition-colors duration-300"
+          style={{
+            color: active >= i + 1 ? ACCENT : "rgba(255,255,255,0.45)",
+          }}
+        >
+          {c.year}
+        </span>
+      ))}
+    </div>
+  );
+});
+
+// ───────────────────────── Inner timeline (needs ≥ 1 chapter) ─────────────────────────
+function TimelineInner({
+  chapters,
+  rebrandPanel,
+}: {
+  chapters: Chapter[];
+  /** Panel index where MATRIX takes over, or Infinity if there is none */
+  rebrandPanel: number;
+}) {
   const ref = useRef<HTMLElement>(null);
   const reduce = useReducedMotion();
+
+  const cfg = useMemo(() => {
+    const PANELS = chapters.length + 1; // intro + one per year
+    const LAST = PANELS - 1;
+    const TOTAL_UNITS = LAST + REST_UNITS + EXIT_UNITS;
+    const SLIDE_END = LAST / TOTAL_UNITS;
+    const EXIT_START = (LAST + REST_UNITS) / TOTAL_UNITS;
+    const COUNTS = chapters.reduce<number[]>(
+      (acc, c) => [...acc, acc[acc.length - 1] + c.events],
+      [0]
+    );
+    const PANEL_INDEXES = Array.from({ length: PANELS }, (_, i) => i);
+
+    // Raw scroll progress (0..1) -> panel position (0..LAST), with a rest at every panel
+    const positionAt = (p: number) => {
+      const q = clamp01(p / SLIDE_END);
+      if (q >= 1) return LAST;
+      const seg = q * LAST;
+      const k = Math.floor(seg);
+      const t = clamp01((seg - k - HOLD) / (1 - HOLD));
+      return k + smoother(t);
+    };
+
+    return {
+      PANELS,
+      LAST,
+      TOTAL_UNITS,
+      EXIT_START,
+      COUNTS,
+      PANEL_INDEXES,
+      positionAt,
+    };
+  }, [chapters]);
+
+  const { PANELS, LAST, TOTAL_UNITS, EXIT_START, COUNTS, PANEL_INDEXES, positionAt } =
+    cfg;
+  const endYear = chapters[chapters.length - 1].year;
 
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start start", "end end"],
   });
-  // Spring smooths wheel/touch steps into one continuous glide
+
   const smooth = useSpring(scrollYProgress, {
-    stiffness: 140,
-    damping: 28,
-    mass: 0.4,
+    stiffness: 70,
+    damping: 22,
+    mass: 0.7,
     restDelta: 0.0005,
   });
   const progress = reduce ? scrollYProgress : smooth;
 
-  // pos: 0 = intro, 1 = 2023, … LAST = 2026 (fractional while sliding)
   const pos = useTransform(progress, positionAt);
   const trackX = useTransform(pos, (v) => `${(-v * 100) / PANELS}%`);
 
-  // Exit: 0 → 1 over the last stretch of scroll (blur + fade into Events)
   const exit = useTransform(progress, (p) =>
     clamp01((p - EXIT_START) / (1 - EXIT_START))
   );
   const exitFilter = useTransform(exit, (e) =>
-    e <= 0.001 || reduce ? "none" : `blur(${(e * MAX_BLUR_PX).toFixed(1)}px)`
+    e <= 0.001 || reduce || MAX_BLUR_PX === 0
+      ? "none"
+      : `blur(${(e * MAX_BLUR_PX).toFixed(1)}px)`
   );
   const exitOpacity = useTransform(exit, (e) => 1 - e);
   const exitScale = useTransform(exit, (e) => (reduce ? 1 : 1 - 0.035 * e));
 
   // Live HUD values
-  const counter = useTransform(
-    pos,
-    Array.from({ length: PANELS }, (_, i) => i),
-    COUNTS
-  );
+  const counter = useTransform(pos, PANEL_INDEXES, COUNTS);
   const counterText = useTransform(counter, (v) =>
     String(Math.round(v)).padStart(2, "0")
   );
-  const barFill = useTransform(pos, [0, 1, LAST], [0, 0.04, 1]);
-  const baseLine = useTransform(pos, [0.4, 1], [0, 1]);
-  const litLine = useTransform(pos, [1, 2], [0, 1]);
-  const aimsOpacity = useTransform(pos, [0.5, 1, 2, 2.7], [0, 1, 1, 0]);
-  const matrixOpacity = useTransform(pos, [2.3, 3, LAST], [0, 1, 1]);
-
-  const [active, setActive] = useState(0);
-  useMotionValueEvent(pos, "change", (v) => {
-    const r = Math.round(v);
-    setActive((prev) => (prev === r ? prev : r));
+  // 0 -> 1 reaches ~4% at the first year, then fills to 100% at the last
+  const barFill = useTransform(pos, (v) => {
+    if (LAST <= 1) return clamp01(v) * 1;
+    return v <= 1 ? 0.04 * Math.max(0, v) : 0.04 + (0.96 * (v - 1)) / (LAST - 1);
   });
+  const baseLine = useTransform(pos, (v) => clamp01((v - 0.4) / 0.6));
+  const litLine = useTransform(pos, (v) => clamp01(v - 1));
+  // AIMS fades in at the start and out just before the rebrand panel
+  const aimsOpacity = useTransform(pos, (v) =>
+    Math.min(clamp01((v - 0.5) / 0.5), clamp01((rebrandPanel - 0.3 - v) / 0.7))
+  );
+  // MATRIX fades in as the rebrand panel arrives and stays
+  const matrixOpacity = useTransform(pos, (v) =>
+    clamp01((v - (rebrandPanel - 0.7)) / 0.7)
+  );
 
   const ghostBase: React.CSSProperties = {
     gridArea: "1 / 1",
@@ -303,6 +362,8 @@ export default function TimelineSection() {
     lineHeight: 1,
     letterSpacing: 0,
     textAlign: "center",
+    willChange: "opacity",
+    transform: "translateZ(0)",
   };
 
   return (
@@ -310,18 +371,12 @@ export default function TimelineSection() {
       ref={ref}
       id="journey"
       aria-label="Our journey timeline"
-      // --per = page scroll spent per panel (shorter on phones)
-      className="relative w-full [--per:75vh] md:[--per:90vh]"
+      className="relative w-full [--per:160svh] md:[--per:120svh]"
       style={{ height: `calc(var(--per) * ${TOTAL_UNITS} + 100svh)` }}
     >
-      <div
-        // --line-y = where the timeline line + dots sit (tuned per screen)
-        className="sticky top-0 h-[100svh] w-full overflow-hidden isolate [--line-y:34%] sm:[--line-y:38%] [@media(max-height:620px)]:[--line-y:31%]"
-      >
-        {/* Background: same recipe as the About section (stays put while content blurs out) */}
+      <div className="sticky top-0 h-[100svh] w-full overflow-hidden isolate [--line-y:34%] sm:[--line-y:38%] [@media(max-height:620px)]:[--line-y:31%]">
         <div aria-hidden className="absolute inset-0 -z-20 pointer-events-none">
-          <div className="absolute inset-0 bg-black/50" />
-          <div className="absolute inset-0 backdrop-blur-sm bg-white/[0.03]" />
+          <div className="absolute inset-0 bg-black/60" />
         </div>
         <div
           aria-hidden
@@ -332,16 +387,15 @@ export default function TimelineSection() {
           }}
         />
 
-        {/* Everything below blurs + fades out as we leave for Events */}
         <motion.div
-          className="absolute inset-0 will-change-[filter,opacity]"
+          className="absolute inset-0 will-change-[opacity,transform]"
           style={{
             filter: exitFilter,
             opacity: exitOpacity,
             scale: exitScale,
           }}
         >
-          {/* Ghost outline words — one grid cell, dead-centre, no drift */}
+          {/* Ghost outline words */}
           <div
             aria-hidden
             className="absolute inset-0 grid place-items-center overflow-hidden pointer-events-none select-none"
@@ -368,7 +422,7 @@ export default function TimelineSection() {
             </motion.span>
           </div>
 
-          {/* Timeline line (static; the dots slide along it) */}
+          {/* Timeline line */}
           <motion.div
             aria-hidden
             className="absolute inset-x-0 h-px pointer-events-none"
@@ -394,9 +448,15 @@ export default function TimelineSection() {
             className="relative z-[2] flex h-full will-change-transform"
             style={{ width: `${PANELS * 100}%`, x: trackX }}
           >
-            <IntroPanel pos={pos} />
-            {CHAPTERS.map((c, i) => (
-              <YearPanel key={c.year} chapter={c} index={i + 1} pos={pos} />
+            <IntroPanel pos={pos} panels={PANELS} endYear={endYear} />
+            {chapters.map((c, i) => (
+              <YearPanel
+                key={c.year}
+                chapter={c}
+                index={i + 1}
+                panels={PANELS}
+                pos={pos}
+              />
             ))}
           </motion.div>
 
@@ -405,18 +465,7 @@ export default function TimelineSection() {
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col gap-2 sm:gap-3 min-w-0">
                 <Pill>Our Journey</Pill>
-                <motion.p
-                  key={active}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="pl-1 text-xs sm:text-sm md:text-base font-semibold text-white/65"
-                  style={{ textShadow }}
-                >
-                  {active === 0
-                    ? "2023 → 2026"
-                    : CHAPTERS[active - 1].academicYear}
-                </motion.p>
+                <ActiveLabel pos={pos} chapters={chapters} endYear={endYear} />
               </div>
 
               <div className="flex flex-col items-end flex-shrink-0">
@@ -432,22 +481,8 @@ export default function TimelineSection() {
               </div>
             </div>
 
-            {/* Progress */}
             <div>
-              <div className="mb-2 sm:mb-3 flex justify-between text-[10px] sm:text-[11px] md:text-xs tracking-[0.25em] sm:tracking-[0.3em]">
-                {CHAPTERS.map((c, i) => (
-                  <span
-                    key={c.year}
-                    className="transition-colors duration-300"
-                    style={{
-                      color:
-                        active >= i + 1 ? ACCENT : "rgba(255,255,255,0.45)",
-                    }}
-                  >
-                    {c.year}
-                  </span>
-                ))}
-              </div>
+              <YearTicks pos={pos} chapters={chapters} />
               <div className="relative h-[2px] w-full bg-white/10">
                 <motion.div
                   className="absolute inset-y-0 left-0 w-full origin-left"
@@ -459,5 +494,48 @@ export default function TimelineSection() {
         </motion.div>
       </div>
     </section>
+  );
+}
+
+// ───────────────────────── Data wrapper (default export) ─────────────────────────
+export default function TimelineSection() {
+  const [entries, setEntries] = useState<TimelineEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const q = query(collection(db, "timeline"), orderBy("year", "asc"));
+    return onSnapshot(
+      q,
+      (snap) => {
+        setEntries(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as TimelineEntry)
+        );
+        setLoaded(true);
+      },
+      (err) => {
+        // Falls back to the fixed 2023 chapter only
+        console.error("Error loading timeline:", err);
+        setLoaded(true);
+      }
+    );
+  }, []);
+
+  const chapters = useMemo(() => buildChapters(entries), [entries]);
+
+  // Panel index of the first year >= rebrand year (intro is panel 0)
+  const rebrandIdx = chapters.findIndex((c) => Number(c.year) >= REBRAND_YEAR);
+  const rebrandPanel = rebrandIdx === -1 ? Infinity : rebrandIdx + 1;
+
+  if (!loaded) {
+    return <section id="journey" aria-busy="true" className="h-[100svh] w-full" />;
+  }
+
+  // Re-mount only when the panel structure changes (add/delete a year)
+  return (
+    <TimelineInner
+      key={`${chapters.length}-${rebrandPanel}`}
+      chapters={chapters}
+      rebrandPanel={rebrandPanel}
+    />
   );
 }

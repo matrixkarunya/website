@@ -4,12 +4,14 @@ import { memo, useEffect, useRef } from "react";
 import { animate, useInView, useReducedMotion } from "framer-motion";
 
 interface StatItem {
+  id?: string;
   value: number;
   suffix?: string;
   label: string;
 }
 
-const STATS: StatItem[] = [
+// Only used if no `stats` prop is passed (e.g. this component is used somewhere else)
+const FALLBACK_STATS: StatItem[] = [
   { value: 20, suffix: "+", label: "Events Hosted" },
   { value: 10, suffix: "+", label: "Workshops Conducted" },
   { value: 100, suffix: "+", label: "Alumni Network" },
@@ -60,19 +62,24 @@ const AnimatedCounter = memo(function AnimatedCounter({
       ref={ref}
       className="tabular-nums text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white"
     >
-      {/* Real final value in the initial HTML: no layout shift, good for SEO / no-JS */}
+      {/* Placeholder in the initial HTML so the width doesn't jump when counting starts */}
       {`0${suffix}`}
     </span>
   );
 });
 
-export default function StatsCounter() {
+export default function StatsCounter({
+  stats = FALLBACK_STATS,
+}: {
+  /** Live values from Firestore (settings/heroStats). Defaults to the built-in numbers. */
+  stats?: StatItem[];
+}) {
   return (
     <div className="stats-wrap w-full px-4 sm:px-6 md:px-8">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8 lg:gap-10">
-        {STATS.map((stat, index) => (
+        {stats.map((stat, index) => (
           <div
-            key={stat.label}
+            key={stat.id ?? `${index}-${stat.label}`}
             className="stat-item text-center space-y-1 sm:space-y-2 group"
             style={{ animationDelay: `${0.15 + index * 0.08}s` }}
           >

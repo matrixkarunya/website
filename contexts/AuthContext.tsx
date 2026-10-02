@@ -8,13 +8,17 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { auth, googleProvider, ADMIN_EMAIL } from '@/lib/firebase';
-import { useRouter } from 'next/navigation';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db, googleProvider } from '@/lib/firebase';
+
+export type Role = 'superadmin' | 'admin' | null;
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  isAdmin: boolean;
+  role: Role;
+  isAdmin: boolean; // true for admin AND superadmin
+  isSuperAdmin: boolean;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -22,7 +26,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  role: null,
   isAdmin: false,
+  isSuperAdmin: false,
   signInWithGoogle: async () => {},
   signOut: async () => {},
 });
@@ -35,15 +41,31 @@ export const useAuth = () => {
   return context;
 };
 
+// Role comes from the document at admins/{lowercase email}
+async function resolveRole(user: User | null): Promise<Role> {
+  if (!user?.email) return null;
+  try {
+    const snap = await getDoc(doc(db, 'admins', user.email.toLowerCase()));
+    if (!snap.exists()) return null;
+    const role = snap.data().role;
+    return role === 'superadmin' || role === 'admin' ? role : null;
+  } catch (error) {
+    console.error('Error resolving role:', error);
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<Role>(null);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setIsAdmin(user?.email === ADMIN_EMAIL);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true);
+      const resolved = await resolveRole(firebaseUser);
+      setUser(firebaseUser);
+      setRole(resolved);
       setLoading(false);
     });
 
@@ -53,9 +75,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      if (result.user.email !== ADMIN_EMAIL) {
+      const resolved = await resolveRole(result.user);
+      if (!resolved) {
         await firebaseSignOut(auth);
-        throw new Error('Unauthorized: Only admin can access this area');
+        throw new Error('Unauthorized: You do not have access to this area');
       }
     } catch (error) {
       console.error('Error signing in with Google:', error);
@@ -72,10 +95,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const value = {
+  const value: AuthContextType = {
     user,
     loading,
-    isAdmin,
+    role,
+    isAdmin: role === 'admin' || role === 'superadmin',
+    isSuperAdmin: role === 'superadmin',
     signInWithGoogle,
     signOut,
   };

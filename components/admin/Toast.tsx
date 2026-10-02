@@ -1,51 +1,37 @@
 // components/admin/Toast.tsx
 import React from 'react';
+import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 
 interface ToastProps {
   message: string;
   type: 'success' | 'error';
+  onClose?: () => void;
 }
 
-export default function Toast({ message, type }: ToastProps) {
+export default function Toast({ message, type, onClose }: ToastProps) {
   return (
-    <div className="fixed bottom-4 right-4 z-50 animate-slide-up">
-      <div
-        className={`flex items-center gap-3 px-6 py-4 rounded-lg shadow-lg ${
-          type === 'success'
-            ? 'bg-green-600 text-white'
-            : 'bg-red-600 text-white'
-        }`}
-      >
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed inset-x-4 bottom-4 z-[60] pb-[env(safe-area-inset-bottom)] sm:inset-x-auto sm:bottom-6 sm:right-6"
+    >
+      <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-lg">
         {type === 'success' ? (
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
         ) : (
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
+          <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
         )}
-        <span className="font-medium">{message}</span>
+        <p className="text-sm text-slate-900">{message}</p>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Dismiss notification"
+            className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,13 +1,50 @@
 // app/admin/dashboard/page.tsx
+// No Firestore reads or writes on this page (auth only).
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import {
+  Lock,
+  LogOut,
+  Info,
+  CalendarDays,
+  Users,
+  Quote,
+  Route,
+  ShieldCheck,
+  type LucideIcon,
+} from 'lucide-react';
+
+interface Section {
+  title: string;
+  description: string;
+  href: string;
+  icon: LucideIcon;
+}
+
+const SECTIONS: Section[] = [
+  { title: 'About', description: 'About page and stats', href: '/admin/about', icon: Info },
+  { title: 'Events', description: 'Manage events & galleries', href: '/admin/events', icon: CalendarDays },
+  { title: 'Team', description: 'Manage team members', href: '/admin/team', icon: Users },
+  { title: 'Timeline', description: 'Manage yearly journey', href: '/admin/timeline', icon: Route },
+  { title: 'Testimony', description: 'Manage testimonials', href: '/admin/testimony', icon: Quote },
+];
+
+// Shown to the superadmin only
+const ADMIN_SECTION: Section = {
+  title: 'Admins',
+  description: 'Add and manage admins',
+  href: '/admin/users',
+  icon: ShieldCheck,
+};
 
 export default function AdminDashboard() {
-  const { user, signOut, isAdmin, loading } = useAuth();
+  const { user, signOut, isAdmin, isSuperAdmin, loading } = useAuth();
   const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
 
   // Redirect to login if not authenticated or not admin
   React.useEffect(() => {
@@ -17,18 +54,20 @@ export default function AdminDashboard() {
   }, [user, isAdmin, loading, router]);
 
   const handleSignOut = async () => {
+    setSigningOut(true);
     try {
       await signOut();
       router.push('/admin/login');
     } catch (error) {
       console.error('Error signing out:', error);
+      setSigningOut(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
       </div>
     );
   }
@@ -37,55 +76,39 @@ export default function AdminDashboard() {
     return null;
   }
 
+  const sections = isSuperAdmin ? [...SECTIONS, ADMIN_SECTION] : SECTIONS;
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <svg
-                  className="w-6 h-6 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                  />
-                </svg>
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white pt-[env(safe-area-inset-top)] shadow-sm">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-600">
+                <Lock className="h-5 w-5 text-white" />
               </div>
-              <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+              <h1 className="truncate text-lg font-bold text-slate-900 sm:text-xl">Admin Dashboard</h1>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">
-                  {user.displayName}
-                </p>
-                <p className="text-xs text-gray-500">{user.email}</p>
+
+            <div className="flex items-center gap-3 sm:gap-4">
+              {/* Name/email hidden on small screens so the header never overflows */}
+              <div className="hidden min-w-0 text-right sm:block">
+                <p className="max-w-[200px] truncate text-sm font-medium text-slate-900">{user.displayName}</p>
+                <p className="max-w-[200px] truncate text-xs text-slate-500">{user.email}</p>
               </div>
               <button
                 onClick={handleSignOut}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                disabled={signingOut}
+                aria-label="Sign out"
+                className="flex min-h-[44px] items-center gap-2 rounded-lg bg-slate-100 px-3.5 text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-60 sm:px-4"
               >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                  />
-                </svg>
-                Sign Out
+                {signingOut ? (
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+                ) : (
+                  <LogOut className="h-5 w-5" />
+                )}
+                <span className="hidden sm:inline">Sign Out</span>
               </button>
             </div>
           </div>
@@ -93,187 +116,35 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         {/* Welcome Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Welcome back, {user.displayName?.split(' ')[0]}! 👋
+        <div className="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="mb-2 text-xl font-bold text-slate-900 sm:text-2xl">
+            Welcome back, {user.displayName?.split(' ')[0] || 'Admin'}
           </h2>
-          <p className="text-gray-600">
-            Manage your team members, content, and settings from here.
-          </p>
+          <p className="text-slate-600">Manage your team members, content, and settings from here.</p>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <StatCard
-            title="Team Members"
-            value="8"
-            icon={
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-              />
-            }
-            color="blue"
-          />
-          <StatCard
-            title="Faculty"
-            value="3"
-            icon={
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            }
-            color="green"
-          />
-          <StatCard
-            title="Alumni"
-            value="2"
-            icon={
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 14l9-5-9-5-9 5 9 5z M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"
-              />
-            }
-            color="purple"
-          />
-        </div>
-
-        {/* Quick Actions */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <ActionButton
-              title="Add Team Member"
-              description="Add new member"
-              icon={
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
-                />
-              }
-              onClick={() => alert('Add Team Member - Coming Soon!')}
-            />
-            <ActionButton
-              title="Manage Team"
-              description="Edit members"
-              icon={
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                />
-              }
-              onClick={() => alert('Manage Team - Coming Soon!')}
-            />
-            <ActionButton
-              title="Alumni Records"
-              description="View alumni"
-              icon={
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 14l9-5-9-5-9 5 9 5z M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"
-                />
-              }
-              onClick={() => alert('Alumni Records - Coming Soon!')}
-            />
-            <ActionButton
-              title="Settings"
-              description="Configure app"
-              icon={
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              }
-              onClick={() => alert('Settings - Coming Soon!')}
-            />
-            <ActionButton
-  title="Manage Team"
-  description="Edit members"
-  icon={
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-    />
-  }
-  onClick={() => router.push('/admin/Team')} // Update this line
-/>
+        {/* Sections */}
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h3 className="mb-4 text-lg font-bold text-slate-900">Manage</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {sections.map(({ title, description, href, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className="group flex min-h-[132px] flex-col items-center justify-center rounded-lg border border-slate-200 bg-white p-4 text-center transition-colors hover:border-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition-colors group-hover:bg-indigo-600 group-hover:text-white">
+                  <Icon className="h-6 w-6" />
+                </div>
+                <h4 className="mb-1 font-semibold text-slate-900">{title}</h4>
+                <p className="text-xs text-slate-500">{description}</p>
+              </Link>
+            ))}
           </div>
         </div>
       </main>
     </div>
-  );
-}
-
-interface StatCardProps {
-  title: string;
-  value: string;
-  icon: React.ReactNode;
-  color: 'blue' | 'green' | 'purple';
-}
-
-function StatCard({ title, value, icon, color }: StatCardProps) {
-  const colors = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-green-50 text-green-600',
-    purple: 'bg-purple-50 text-purple-600',
-  };
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-gray-600 mb-1">{title}</p>
-          <p className="text-3xl font-bold text-gray-900">{value}</p>
-        </div>
-        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${colors[color]}`}>
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            {icon}
-          </svg>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface ActionButtonProps {
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-}
-
-function ActionButton({ title, description, icon, onClick }: ActionButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex flex-col items-center text-center p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all group"
-    >
-      <div className="w-12 h-12 bg-gray-100 group-hover:bg-blue-100 rounded-lg flex items-center justify-center mb-3 transition-colors">
-        <svg className="w-6 h-6 text-gray-600 group-hover:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          {icon}
-        </svg>
-      </div>
-      <h4 className="font-semibold text-gray-900 mb-1">{title}</h4>
-      <p className="text-xs text-gray-500">{description}</p>
-    </button>
   );
 }

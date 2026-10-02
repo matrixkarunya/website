@@ -5,10 +5,15 @@ import Image from "next/image";
 import { GooeyText } from "@/components/ui/gooey-text-morphing";
 import StatsCounter from "@/components/stats-counter";
 import Dither from "@/components/ui/Dither";
+import { useHeroStats } from "@/lib/hero";
 
 const textShadow = "0 2px 16px rgba(0,0,0,0.9), 0 1px 4px rgba(0,0,0,1)";
 
 export default function HeroSection() {
+  // Live "Our Impact" heading + 4 stats, editable from /admin/hero (settings/heroStats).
+  // Falls back to the defaults in lib/heroStats.ts if the doc is missing or fails to load.
+  const { data: heroStats, loading: statsLoading } = useHeroStats();
+
   return (
     <section
       className="relative flex flex-col items-center justify-center px-6 overflow-hidden"
@@ -161,7 +166,7 @@ export default function HeroSection() {
           transition={{ duration: 1, delay: 0.65, ease: [0.22, 1, 0.36, 1] }}
           className="w-full mt-1 md:mt-2"
         >
-          {/* "Our Impact" pill label */}
+          {/* Heading pill label (editable in admin) */}
           <div className="flex items-center justify-center mb-3">
             <div className="flex items-center gap-3 w-full max-w-xs">
               <div
@@ -178,7 +183,7 @@ export default function HeroSection() {
                   textShadow,
                 }}
               >
-                Our Impact
+                {heroStats.title}
               </span>
               <div
                 className="flex-1 h-px"
@@ -198,7 +203,13 @@ export default function HeroSection() {
                 "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)",
             }}
           >
-            <StatsCounter />
+            {/* Wait for the live values so the numbers count up once, not twice.
+                The placeholder keeps the card from jumping in height. */}
+            {statsLoading ? (
+              <div className="min-h-[72px] md:min-h-[88px]" aria-hidden="true" />
+            ) : (
+              <StatsCounter stats={heroStats.stats} />
+            )}
           </div>
         </motion.div>
       </div>

@@ -18,7 +18,4 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 
-// Hardcoded admin email (you can also add this to Firestore rules)
-export const ADMIN_EMAIL = 'jennifergethsia@gmail.com'; // Change this to your admin email
-
 export { app, auth, db, googleProvider };

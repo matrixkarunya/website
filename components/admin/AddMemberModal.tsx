@@ -1,11 +1,13 @@
 // components/admin/AddMemberModal.tsx
-import React, { useState } from 'react';
+'use client';
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { GraduationCap, Info, Plus, User, X } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
-import ImageUpload from './ImageUpload';
-import { X, Plus, GraduationCap, User, Calendar, Hash, Mail, Linkedin, Globe, Info } from 'lucide-react';
 import { generateAcademicYears, getCurrentAcademicYear } from '@/lib/utils/academicYear';
+import ImageUpload from './ImageUpload';
 
 interface AddMemberModalProps {
   onClose: () => void;
@@ -13,12 +15,89 @@ interface AddMemberModalProps {
   onError: (message: string) => void;
 }
 
-export default function AddMemberModal({
-  onClose,
-  onSuccess,
-  onError,
-}: AddMemberModalProps) {
-  const [formData, setFormData] = useState({
+type Category = 'faculty' | 'student';
+
+const BIO_LIMIT = 600;
+
+const inputClass =
+  'min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 disabled:bg-slate-50 disabled:text-slate-500';
+
+const focusRing =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600';
+
+const normalizeUrl = (value: string) => {
+  const v = value.trim();
+  if (!v) return null;
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+};
+
+function Field({
+  id,
+  label,
+  required,
+  hint,
+  aside,
+  children,
+}: {
+  id: string;
+  label: string;
+  required?: boolean;
+  hint?: string;
+  aside?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <label htmlFor={id} className="text-sm font-medium text-slate-700">
+          {label}
+          {required && <span className="text-red-600"> *</span>}
+        </label>
+        {aside && <span className="text-xs text-slate-500">{aside}</span>}
+      </div>
+      {children}
+      {hint && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-500">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Choice({
+  name,
+  checked,
+  onChange,
+  children,
+}: {
+  name: string;
+  checked: boolean;
+  onChange: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block cursor-pointer">
+      <input type="radio" name={name} checked={checked} onChange={onChange} className="peer sr-only" />
+      <span className="flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:border-slate-400 peer-checked:border-indigo-600 peer-checked:bg-indigo-50 peer-checked:text-indigo-700 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-indigo-600">
+        {children}
+      </span>
+    </label>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-4">
+      <h3 className="border-b border-slate-200 pb-2 text-sm font-semibold text-slate-900">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+export default function AddMemberModal({ onClose, onSuccess, onError }: AddMemberModalProps) {
+  const initialForm = useRef({
     name: '',
     role: '',
     specialization: '',
@@ -27,476 +106,452 @@ export default function AddMemberModal({
     linkedinUrl: '',
     portfolioUrl: '',
     registerId: '',
-    academicYear: getCurrentAcademicYear(), // Set current year as default
+    academicYear: getCurrentAcademicYear(),
     isCurrent: true,
-    category: 'student' as 'faculty' | 'student',
+    category: 'student' as Category,
     order: 0,
   });
+
+  const [formData, setFormData] = useState(initialForm.current);
   const [expertise, setExpertise] = useState<string[]>([]);
   const [expertiseInput, setExpertiseInput] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
+  const [imagePreview, setImagePreview] = useState('');
+  const [imageError, setImageError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const nameRef = useRef<HTMLInputElement>(null);
   const academicYears = generateAcademicYears();
+  const currentYear = getCurrentAcademicYear();
+
+  const update = <K extends keyof typeof formData>(key: K, value: (typeof formData)[K]) =>
+    setFormData((prev) => ({ ...prev, [key]: value }));
+
+  const dirty =
+    JSON.stringify(formData) !== JSON.stringify(initialForm.current) ||
+    expertise.length > 0 ||
+    expertiseInput.trim() !== '' ||
+    imageFile !== null;
+
+  const requestClose = useCallback(() => {
+    if (loading) return;
+    if (dirty && !window.confirm('Discard this new member? Your changes will be lost.')) return;
+    onClose();
+  }, [loading, dirty, onClose]);
+
+  // Esc closes, body scroll is locked, first field is focused
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') requestClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [requestClose]);
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    nameRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
 
   const handleImageSelect = (file: File) => {
     setImageFile(file);
+    setImageError('');
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string);
-    };
+    reader.onloadend = () => setImagePreview(reader.result as string);
     reader.readAsDataURL(file);
   };
 
   const addExpertise = () => {
-    if (expertiseInput.trim() && !expertise.includes(expertiseInput.trim())) {
-      setExpertise([...expertise, expertiseInput.trim()]);
-      setExpertiseInput('');
+    const value = expertiseInput.trim().replace(/,+$/, '').trim();
+    if (!value) return;
+    if (!expertise.some((e) => e.toLowerCase() === value.toLowerCase())) {
+      setExpertise((prev) => [...prev, value]);
     }
+    setExpertiseInput('');
   };
 
-  const removeExpertise = (item: string) => {
-    setExpertise(expertise.filter((e) => e !== item));
-  };
+  const removeExpertise = (item: string) => setExpertise((prev) => prev.filter((e) => e !== item));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
 
     if (!imageFile) {
+      setImageError('Add a profile photo to continue.');
       onError('Please select an image');
       return;
     }
 
     if (!formData.academicYear.trim()) {
-      onError('Please select academic year');
+      onError('Please select an academic year');
       return;
     }
 
+    // Include a tag that was typed but not yet added
+    const pending = expertiseInput.trim().replace(/,+$/, '').trim();
+    const finalExpertise =
+      pending && !expertise.some((x) => x.toLowerCase() === pending.toLowerCase())
+        ? [...expertise, pending]
+        : expertise;
+
+    const name = formData.name.trim();
     setLoading(true);
+    let uploaded: { url: string; publicId: string } | null = null;
 
     try {
-      const { url, publicId } = await uploadToCloudinary(imageFile);
+      uploaded = await uploadToCloudinary(imageFile);
 
       await addDoc(collection(db, 'team'), {
-        name: formData.name,
-        role: formData.role,
-        specialization: formData.specialization,
-        description: formData.description,
-        email: formData.email || null,
-        linkedinUrl: formData.linkedinUrl || null,
-        portfolioUrl: formData.portfolioUrl || null,
-        registerId: formData.registerId || null,
+        name,
+        role: formData.role.trim(),
+        specialization: formData.specialization.trim(),
+        description: formData.description.trim(),
+        email: formData.email.trim() || null,
+        linkedinUrl: normalizeUrl(formData.linkedinUrl),
+        portfolioUrl: normalizeUrl(formData.portfolioUrl),
+        registerId: formData.category === 'student' ? formData.registerId.trim() || null : null,
         academicYear: formData.academicYear,
         isCurrent: formData.isCurrent,
         category: formData.category,
         order: formData.order,
-        expertise: expertise.length > 0 ? expertise : null,
-        imageUrl: url,
-        imagePublicId: publicId,
+        expertise: finalExpertise.length > 0 ? finalExpertise : null,
+        imageUrl: uploaded.url,
+        imagePublicId: uploaded.publicId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
-      onSuccess('Team member added successfully!');
+      onSuccess(`${name} added to the team`);
     } catch (error) {
       console.error('Error adding member:', error);
-      onError('Failed to add team member');
+      // Don't leave an orphaned image behind if only the save failed
+      if (uploaded) {
+        fetch('/api/cloudinary/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ publicId: uploaded.publicId }),
+        }).catch(() => {});
+      }
+      onError("Couldn't add this member. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white/10 backdrop-blur-2xl border border-white/20 rounded-3xl max-w-3xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
-        {/* Header - Fixed */}
-        <div className="flex-shrink-0 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-              <div className="p-2 bg-blue-500/20 rounded-lg">
-                <Plus className="w-5 h-5 text-blue-400" />
-              </div>
-              Add Team Member
-            </h2>
-            <p className="text-white/60 text-sm mt-1 ml-11">
-              Fill in the details to add a new member to your team
-            </p>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 sm:items-center sm:p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) requestClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-member-title"
+        className="flex max-h-[94vh] w-full max-w-2xl flex-col rounded-t-2xl bg-white shadow-xl sm:max-h-[90vh] sm:rounded-2xl"
+      >
+        {/* Header */}
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-600">
+              <Plus className="h-5 w-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h2 id="add-member-title" className="text-lg font-bold text-slate-900">
+                Add team member
+              </h2>
+              <p className="text-sm text-slate-500">Fields marked * are required.</p>
+            </div>
           </div>
           <button
-            onClick={onClose}
+            type="button"
+            onClick={requestClose}
             disabled={loading}
-            className="p-2 text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-all disabled:opacity-50"
+            aria-label="Close"
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 ${focusRing}`}
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Scrollable Form Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
-          <div className="space-y-5">
-            {/* Image Upload */}
-            <ImageUpload
-              onImageSelect={handleImageSelect}
-              imagePreview={imagePreview}
-            />
+        {/* Form */}
+        <form id="add-member-form" onSubmit={handleSubmit} className="flex-1 space-y-8 overflow-y-auto px-5 py-6 sm:px-6">
+          <Section title="Photo">
+            <ImageUpload onImageSelect={handleImageSelect} imagePreview={imagePreview} />
+            {imageError && (
+              <p role="alert" className="text-sm text-red-600">
+                {imageError}
+              </p>
+            )}
+          </Section>
 
-            {/* Academic Year & Status - Side by Side */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Academic Year - Dropdown */}
-              {/* Academic Year - Dropdown */}
-<div className="bg-blue-500/10 border border-blue-400/20 rounded-xl p-4 backdrop-blur-xl">
-  <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
-    <Calendar className="w-4 h-4 text-blue-400" />
-    Academic Year *
-  </label>
-  <select
-    required
-    value={formData.academicYear}
-    onChange={(e) =>
-      setFormData({ ...formData, academicYear: e.target.value })
-    }
-    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all cursor-pointer"
-  >
-    {academicYears.map((year) => (
-      <option 
-        key={year} 
-        value={year} 
-        className="bg-gray-900"
-      >
-        {year} {year === getCurrentAcademicYear() && '(Current)'}
-      </option>
-    ))}
-  </select>
-  <p className="text-xs text-white/50 mt-2 flex items-center gap-1">
-    <Info className="w-3 h-3" />
-    Automatically updated each year
-  </p>
-</div>
+          <Section title="Placement">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="am-year" label="Academic year" required>
+                <select
+                  id="am-year"
+                  required
+                  value={formData.academicYear}
+                  onChange={(e) => update('academicYear', e.target.value)}
+                  className={`${inputClass} cursor-pointer`}
+                >
+                  {academicYears.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                      {year === currentYear ? ' (current)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
-
-              {/* Current/Past Toggle */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-xl">
-                <label className="block text-sm font-medium text-white mb-3">
-                  Member Status *
-                </label>
-                <div className="space-y-2">
-                  <label className="cursor-pointer block">
-                    <input
-                      type="radio"
-                      checked={formData.isCurrent === true}
-                      onChange={() =>
-                        setFormData({ ...formData, isCurrent: true })
-                      }
-                      className="sr-only peer"
-                    />
-                    <div className="px-3 py-2 bg-white/5 border-2 border-white/10 peer-checked:border-green-500/50 peer-checked:bg-green-500/10 rounded-lg text-sm text-white/70 peer-checked:text-green-300 font-medium transition-all">
-                      Current Team
-                    </div>
-                  </label>
-                  <label className="cursor-pointer block">
-                    <input
-                      type="radio"
-                      checked={formData.isCurrent === false}
-                      onChange={() =>
-                        setFormData({ ...formData, isCurrent: false })
-                      }
-                      className="sr-only peer"
-                    />
-                    <div className="px-3 py-2 bg-white/5 border-2 border-white/10 peer-checked:border-gray-500/50 peer-checked:bg-gray-500/10 rounded-lg text-sm text-white/70 peer-checked:text-gray-300 font-medium transition-all">
-                      Past Team
-                    </div>
-                  </label>
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-slate-700">
+                  Category <span className="text-red-600">*</span>
+                </p>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Category">
+                  <Choice name="am-category" checked={formData.category === 'faculty'} onChange={() => update('category', 'faculty')}>
+                    <GraduationCap className="h-4 w-4" />
+                    Faculty
+                  </Choice>
+                  <Choice name="am-category" checked={formData.category === 'student'} onChange={() => update('category', 'student')}>
+                    <User className="h-4 w-4" />
+                    Student
+                  </Choice>
                 </div>
               </div>
             </div>
 
-            {/* Rest of the form remains the same... */}
-            {/* Basic Information */}
-            <div className="space-y-4">
-              {/* Name & Role */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                    placeholder="John Doe"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2">
-                    Role/Position *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.role}
-                    onChange={(e) =>
-                      setFormData({ ...formData, role: e.target.value })
-                    }
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                    placeholder="PhD Researcher"
-                  />
-                </div>
+            <div>
+              <p className="mb-1.5 text-sm font-medium text-slate-700">
+                Status <span className="text-red-600">*</span>
+              </p>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Status">
+                <Choice name="am-status" checked={formData.isCurrent} onChange={() => update('isCurrent', true)}>
+                  Current team
+                </Choice>
+                <Choice name="am-status" checked={!formData.isCurrent} onChange={() => update('isCurrent', false)}>
+                  Past member
+                </Choice>
               </div>
+              <p className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-500">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {formData.isCurrent
+                  ? 'Shown on the public team page.'
+                  : 'Listed under History for the academic year above.'}
+              </p>
+            </div>
+          </Section>
 
-              {/* Specialization */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Specialization *
-                </label>
+          <Section title="Profile">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="am-name" label="Full name" required>
                 <input
+                  id="am-name"
+                  ref={nameRef}
                   type="text"
                   required
-                  value={formData.specialization}
-                  onChange={(e) =>
-                    setFormData({ ...formData, specialization: e.target.value })
-                  }
-                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                  placeholder="Deep Learning & Neural Networks"
+                  autoComplete="off"
+                  value={formData.name}
+                  onChange={(e) => update('name', e.target.value)}
+                  className={inputClass}
+                  placeholder="John Doe"
                 />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Biography *
-                </label>
-                <textarea
+              </Field>
+              <Field id="am-role" label="Role or position" required>
+                <input
+                  id="am-role"
+                  type="text"
                   required
-                  rows={4}
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all resize-none"
-                  placeholder="Brief bio highlighting achievements and contributions..."
+                  value={formData.role}
+                  onChange={(e) => update('role', e.target.value)}
+                  className={inputClass}
+                  placeholder="PhD Researcher"
                 />
-              </div>
-
-              {/* Register ID & Category */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
-                    <Hash className="w-4 h-4 text-white/60" />
-                    Register ID
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.registerId}
-                    onChange={(e) =>
-                      setFormData({ ...formData, registerId: e.target.value })
-                    }
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all font-mono"
-                    placeholder="REG12345"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2">
-                    Category *
-                  </label>
-                  <div className="flex gap-3 pt-1">
-                    <label className="flex-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        value="faculty"
-                        checked={formData.category === 'faculty'}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            category: e.target.value as 'faculty' | 'student',
-                          })
-                        }
-                        className="sr-only peer"
-                      />
-                      <div className="px-3 py-2 bg-white/5 border-2 border-white/10 peer-checked:border-purple-500/50 peer-checked:bg-purple-500/10 rounded-lg text-sm text-white/70 peer-checked:text-purple-300 font-medium flex items-center justify-center gap-2 transition-all">
-                        <GraduationCap className="w-4 h-4" />
-                        Faculty
-                      </div>
-                    </label>
-                    <label className="flex-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        value="student"
-                        checked={formData.category === 'student'}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            category: e.target.value as 'faculty' | 'student',
-                          })
-                        }
-                        className="sr-only peer"
-                      />
-                      <div className="px-3 py-2 bg-white/5 border-2 border-white/10 peer-checked:border-blue-500/50 peer-checked:bg-blue-500/10 rounded-lg text-sm text-white/70 peer-checked:text-blue-300 font-medium flex items-center justify-center gap-2 transition-all">
-                        <User className="w-4 h-4" />
-                        Student
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              </div>
+              </Field>
             </div>
 
-            {/* Contact & Social Links */}
-            <div className="space-y-4">
-              {/* Email */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
-                  <Mail className="w-4 h-4 text-white/60" />
-                  Email Address
-                </label>
+            <Field id="am-spec" label="Specialization" required>
+              <input
+                id="am-spec"
+                type="text"
+                required
+                value={formData.specialization}
+                onChange={(e) => update('specialization', e.target.value)}
+                className={inputClass}
+                placeholder="Deep Learning & Neural Networks"
+              />
+            </Field>
+
+            <Field id="am-bio" label="Biography" required aside={`${formData.description.length}/${BIO_LIMIT}`}>
+              <textarea
+                id="am-bio"
+                required
+                rows={4}
+                maxLength={BIO_LIMIT}
+                value={formData.description}
+                onChange={(e) => update('description', e.target.value)}
+                className={`${inputClass} resize-none`}
+                placeholder="A short bio highlighting achievements and contributions."
+              />
+            </Field>
+
+            {formData.category === 'student' && (
+              <Field id="am-reg" label="Register ID">
                 <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                  placeholder="john.doe@example.com"
+                  id="am-reg"
+                  type="text"
+                  value={formData.registerId}
+                  onChange={(e) => update('registerId', e.target.value)}
+                  className={`${inputClass} font-mono`}
+                  placeholder="REG12345"
                 />
-              </div>
+              </Field>
+            )}
+          </Section>
 
-              {/* LinkedIn & Portfolio */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
-                    <Linkedin className="w-4 h-4 text-white/60" />
-                    LinkedIn URL
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.linkedinUrl}
-                    onChange={(e) =>
-                      setFormData({ ...formData, linkedinUrl: e.target.value })
-                    }
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                    placeholder="linkedin.com/in/username"
-                  />
-                </div>
+          <Section title="Contact and links">
+            <Field id="am-email" label="Email address">
+              <input
+                id="am-email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => update('email', e.target.value)}
+                className={inputClass}
+                placeholder="john.doe@example.com"
+              />
+            </Field>
 
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
-                    <Globe className="w-4 h-4 text-white/60" />
-                    Portfolio URL
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.portfolioUrl}
-                    onChange={(e) =>
-                      setFormData({ ...formData, portfolioUrl: e.target.value })
-                    }
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                    placeholder="yourportfolio.com"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Expertise Tags */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Areas of Expertise (Optional)
-              </label>
-              <div className="flex gap-2 mb-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="am-linkedin" label="LinkedIn">
                 <input
+                  id="am-linkedin"
+                  type="text"
+                  inputMode="url"
+                  autoCapitalize="none"
+                  value={formData.linkedinUrl}
+                  onChange={(e) => update('linkedinUrl', e.target.value)}
+                  className={inputClass}
+                  placeholder="linkedin.com/in/username"
+                />
+              </Field>
+              <Field id="am-portfolio" label="Portfolio">
+                <input
+                  id="am-portfolio"
+                  type="text"
+                  inputMode="url"
+                  autoCapitalize="none"
+                  value={formData.portfolioUrl}
+                  onChange={(e) => update('portfolioUrl', e.target.value)}
+                  className={inputClass}
+                  placeholder="yourportfolio.com"
+                />
+              </Field>
+            </div>
+            <p className="-mt-1 text-xs text-slate-500">You can leave out https://, we add it for you.</p>
+          </Section>
+
+          <Section title="Expertise">
+            <Field id="am-expertise" label="Areas of expertise" hint="Press Enter or comma to add each one.">
+              <div className="flex gap-2">
+                <input
+                  id="am-expertise"
                   type="text"
                   value={expertiseInput}
                   onChange={(e) => setExpertiseInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addExpertise())}
-                  className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                  placeholder="e.g., Machine Learning, Python"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      addExpertise();
+                    }
+                  }}
+                  className={`${inputClass} flex-1`}
+                  placeholder="e.g. Machine Learning, Python"
                 />
                 <button
                   type="button"
                   onClick={addExpertise}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all flex items-center gap-2 font-medium"
+                  disabled={!expertiseInput.trim()}
+                  className={`flex min-h-[44px] items-center gap-2 rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50 ${focusRing}`}
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   Add
                 </button>
               </div>
-              {expertise.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {expertise.map((item) => (
-                    <span
-                      key={item}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 border border-blue-400/30 text-blue-200 rounded-lg text-sm font-medium"
+            </Field>
+            {expertise.length > 0 && (
+              <ul className="flex flex-wrap gap-2">
+                {expertise.map((item) => (
+                  <li
+                    key={item}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 py-1 pl-2.5 pr-1 text-sm text-slate-700"
+                  >
+                    {item}
+                    <button
+                      type="button"
+                      onClick={() => removeExpertise(item)}
+                      aria-label={`Remove ${item}`}
+                      className={`flex h-6 w-6 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700 ${focusRing}`}
                     >
-                      {item}
-                      <button
-                        type="button"
-                        onClick={() => removeExpertise(item)}
-                        className="hover:text-white transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
 
-            {/* Display Order */}
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
-                <Hash className="w-4 h-4 text-white/60" />
-                Display Order *
-              </label>
+          <Section title="Display">
+            <Field
+              id="am-order"
+              label="Display order"
+              required
+              hint="Lower numbers appear first within their category."
+            >
               <input
+                id="am-order"
                 type="number"
                 required
-                min="0"
+                min={0}
+                inputMode="numeric"
                 value={formData.order}
-                onChange={(e) =>
-                  setFormData({ ...formData, order: parseInt(e.target.value) || 0 })
-                }
-                className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                placeholder="0"
+                onChange={(e) => update('order', parseInt(e.target.value, 10) || 0)}
+                className={`${inputClass} sm:max-w-[160px]`}
               />
-              <p className="text-xs text-white/50 mt-2 flex items-center gap-1">
-                <Info className="w-3 h-3" />
-                Lower numbers appear first within their category
-              </p>
-            </div>
-          </div>
-        </div>
+            </Field>
+          </Section>
+        </form>
 
-        {/* Fixed Bottom Buttons */}
-        <div className="flex-shrink-0 bg-white/5 backdrop-blur-xl border-t border-white/10 px-6 py-4">
-          <div className="flex gap-3">
+        {/* Footer */}
+        <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-b-2xl sm:px-6">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               disabled={loading}
-              className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-lg transition-all disabled:opacity-50 font-medium"
+              className={`min-h-[44px] rounded-lg bg-slate-100 px-5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-60 ${focusRing}`}
             >
               Cancel
             </button>
             <button
               type="submit"
-              onClick={handleSubmit}
+              form="add-member-form"
               disabled={loading}
-              className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2 font-medium shadow-lg shadow-blue-500/25"
+              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-60 ${focusRing}`}
             >
               {loading ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                  Adding...
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
+                  Adding…
                 </>
               ) : (
                 <>
-                  <Plus className="w-4 h-4" />
-                  Add Member
+                  <Plus className="h-4 w-4" />
+                  Add member
                 </>
               )}
             </button>

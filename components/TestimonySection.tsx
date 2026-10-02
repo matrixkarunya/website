@@ -25,7 +25,8 @@ interface Testimony {
 }
 
 const CHAR_LIMIT = 165;
-const PREVIEW_COUNT = 8; // cards that scroll on the home page
+const PREVIEW_COUNT = 8; // max cards that scroll on the home page
+const VIEW_MORE_AFTER = 3; // "View More" appears when there are MORE than this many
 const SECONDS_PER_CARD = 6; // keeps the marquee at a readable pace
 const textShadow = "0 2px 12px rgba(0,0,0,0.85), 0 1px 3px rgba(0,0,0,1)";
 
@@ -117,9 +118,7 @@ function Author({
       )}
       <div>
         <p
-          className={`font-bold text-white leading-tight ${
-            size === "md" ? "text-sm" : "text-sm"
-          }`}
+          className="text-sm font-bold text-white leading-tight"
           style={{ textShadow }}
         >
           {testimony.name}
@@ -400,22 +399,21 @@ export default function TestimonySection() {
   const [testimonies, setTestimonies] = useState<Testimony[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
   const [activeTestimony, setActiveTestimony] = useState<Testimony | null>(null);
 
   useEffect(() => {
-    // Ask for one extra document so we know whether "View More" is needed
-    // without downloading the whole collection.
+    // Only the first PREVIEW_COUNT are needed on the home page. Because that is
+    // always more than VIEW_MORE_AFTER, the length of this list is enough to
+    // know whether "View More" should show.
     const q = query(
       collection(db, "testimonies"),
       orderBy("order", "asc"),
-      limit(PREVIEW_COUNT + 1)
+      limit(PREVIEW_COUNT)
     );
     const unsub = onSnapshot(q, (snap) => {
       const data: Testimony[] = [];
       snap.forEach((doc) => data.push({ id: doc.id, ...doc.data() } as Testimony));
-      setHasMore(data.length > PREVIEW_COUNT);
-      setTestimonies(data.slice(0, PREVIEW_COUNT));
+      setTestimonies(data);
       setLoading(false);
     });
     return () => unsub();
@@ -430,7 +428,9 @@ export default function TestimonySection() {
   // rather than flows), looped scroll for 3+.
   const isStatic = testimonies.length <= 2;
   const isLoop = !isStatic;
-  const showViewMore = hasMore;
+
+  // Visible whenever there are MORE than 3 testimonies (4 or more).
+  const showViewMore = testimonies.length > VIEW_MORE_AFTER;
 
   // Duplicate enough times to fill a smooth, seamless loop even with just 3–4
   // cards. The track scrolls by exactly 1/3 of its width, so 3 copies is the
@@ -550,7 +550,7 @@ export default function TestimonySection() {
         )}
       </motion.div>
 
-      {/* ── View More — only when there are more than fit comfortably ── */}
+      {/* ── View More — visible when there are more than 3 testimonies ── */}
       {showViewMore && (
         <div className="relative z-10 flex justify-center pt-10">
           <Link

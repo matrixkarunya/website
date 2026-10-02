@@ -6,6 +6,7 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useHeroStats } from "@/lib/hero";
 
 // Fallback used until the Firestore doc loads (or if it's empty/missing)
 const MATRIX_FALLBACK_IMAGE = "/matrix-team.jpg";
@@ -63,7 +64,8 @@ const sections = [
     title: "MATRIX",
     subtitle: "Machine Learning Association for Technical Research & Innovative eXcellence",
     description:
-      "Inaugurated on 2nd September 2025, MATRIX is the official student association of the Division of AI & ML. We are a community of students, innovators, and leaders pushing boundaries — from workshops and hackathons to research initiatives and industry connects.",
+      "A dynamic community that brings together students with diverse interests and ideas, creating a space to connect, explore, and grow together. Through student-led initiatives, collaborative activities, knowledge sharing, and engaging experiences, we encourage members to step beyond the classroom, discover their strengths, and take an active role in shaping the community. It is a place to build meaningful connections, develop confidence, and turn curiosity into experiences that make a lasting impact.",
+    // Shown only until the live stats load (the live ones come from settings/heroStats)
     highlights: [
       { label: "Events", value: "20+" },
       { label: "Workshops", value: "10+" },
@@ -190,9 +192,9 @@ const Panel = memo(function Panel({
 
         {/* Stats: 2 cols on phones, 4 from sm up */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
-          {section.highlights.map(({ label, value }) => (
+          {section.highlights.map(({ label, value }, i) => (
             <div
-              key={label}
+              key={`${i}-${label}`}
               className="px-2 py-2.5 rounded-xl flex flex-col items-center text-center"
               style={glassStat}
             >
@@ -260,6 +262,10 @@ export default function AboutSection() {
   // Live-editable MATRIX section image, pulled from Firestore (settings/matrixImage)
   const [matrixImage, setMatrixImage] = useState<string>(MATRIX_FALLBACK_IMAGE);
 
+  // Live MATRIX stats: the same four numbers as the hero "Our Impact" card (settings/heroStats),
+  // edited from /admin/hero
+  const { data: heroStats, loading: statsLoading } = useHeroStats();
+
   useEffect(() => {
     const ref = doc(db, "settings", "matrixImage");
     const unsub = onSnapshot(
@@ -280,10 +286,21 @@ export default function AboutSection() {
     return () => unsub();
   }, []);
 
-  // Override only the MATRIX (03) section's image with the live Firestore value.
+  // Override only the MATRIX (03) section with live Firestore values (image + stats).
   // The other two panels stay fully static.
   const liveSections = sections.map((s) =>
-    s.number === "03" ? { ...s, image: matrixImage } : s
+    s.number === "03"
+      ? {
+          ...s,
+          image: matrixImage,
+          highlights: statsLoading
+            ? s.highlights
+            : heroStats.stats.map((st) => ({
+                label: st.label,
+                value: `${st.value.toLocaleString()}${st.suffix}`,
+              })),
+        }
+      : s
   );
 
   return (
