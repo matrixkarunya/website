@@ -48,6 +48,9 @@ export const metadata = {
     description: "Karunya's premier AI/ML community for students and innovators",
     images: ["/ml-g.png"],
   },
+  verification: {
+    google: "NZgaSP7VDEzk3guDRCj60AgnwnEJy-nM4PYvf7NJtlE",
+  },
 };
 
 export default function RootLayout({
