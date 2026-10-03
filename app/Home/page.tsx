@@ -57,20 +57,28 @@ export default function Home() {
         }}
       />
 
-      {/* ── Layer 2: All content ── */}
-      <main
+      {/* ── Layer 2: All content ──
+          (a div, not <main>: the root layout already wraps pages in a <main>) */}
+      <div
         className="relative w-full min-h-screen"
         style={{ zIndex: 2, pointerEvents: "auto" }}
       >
         <HeroSection />
-        <AboutSection />
-<TimelineSection />
 
-       <EventsSection />
+        {/* Anchor target for the nav's "About" link (/#about) */}
+        <div id="about" style={{ scrollMarginTop: 96 }}>
+          <AboutSection />
+        </div>
 
+        {/* Anchor target for the nav's "Our Timeline" link (/#timeline) */}
+        <div id="timeline" style={{ scrollMarginTop: 96 }}>
+          <TimelineSection />
+        </div>
+
+        <EventsSection />
 
         <TestimonySection />
-      </main>
+      </div>
     </>
   );
 }

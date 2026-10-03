@@ -1,9 +1,20 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { NavBar } from "@/components/Navbar";
+import { NavBar, type NavItem } from "@/components/Navbar";
 import { Footer } from "@/components/footer";
-import { Home, Swords, UsersRound, Newspaper, Trophy, LucideIcon } from "lucide-react";
+import {
+  Home,
+  Swords,
+  UsersRound,
+  Newspaper,
+  Trophy,
+  Info,
+  Package,
+  Mail,
+  History,
+  LucideIcon,
+} from "lucide-react";
 
 // Map icon names to components
 const iconMap: Record<string, LucideIcon> = {
@@ -12,6 +23,18 @@ const iconMap: Record<string, LucideIcon> = {
   UsersRound,
   Newspaper,
   Trophy,
+  Info,
+  Package,
+  Mail,
+  History,
+};
+
+export type RawNavItem = {
+  name: string;
+  url: string;
+  icon: string;
+  placement?: NavItem["placement"];
+  description?: string;
 };
 
 export default function LayoutClient({
@@ -19,13 +42,13 @@ export default function LayoutClient({
   navItems,
 }: {
   children: React.ReactNode;
-  navItems: { name: string; url: string; icon: string }[];
+  navItems: RawNavItem[];
 }) {
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith("/admin");
 
   // Convert icon names to components (falls back to Home so an unknown name can never crash the nav)
-  const navItemsWithIcons = navItems.map((item) => ({
+  const navItemsWithIcons: NavItem[] = navItems.map((item) => ({
     ...item,
     icon: iconMap[item.icon] ?? Home,
   }));
@@ -36,7 +59,19 @@ export default function LayoutClient({
       <main className={!isAdminRoute ? "pt-0 flex-1" : "flex-1"}>
         {children}
       </main>
-      {!isAdminRoute && <Footer />}
+      {!isAdminRoute && (
+        // position + z-index lift this above the home page's fixed dither background,
+        // so the solid colour (and the empty space below the footer) actually shows.
+        <div style={{ position: "relative", zIndex: 2, backgroundColor: "#0a0a0a" }}>
+          <Footer />
+          {/* Phones only: empty footer space so the floating bottom bar never covers the text */}
+          <div
+            className="md:hidden"
+            style={{ height: "calc(5.5rem + env(safe-area-inset-bottom))" }}
+            aria-hidden
+          />
+        </div>
+      )}
     </>
   );
 }
