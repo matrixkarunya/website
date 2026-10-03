@@ -13,28 +13,31 @@ interface GooeyTextProps {
 
 export function GooeyText({
   texts,
-  morphTime = 1,
-  cooldownTime = 0.25,
+  morphTime = 2.5,
+  cooldownTime = 1,
   className,
-  textClassName
+  textClassName,
 }: GooeyTextProps) {
   const text1Ref = React.useRef<HTMLSpanElement>(null);
   const text2Ref = React.useRef<HTMLSpanElement>(null);
 
   React.useEffect(() => {
     let textIndex = texts.length - 1;
-    let time = new Date();
+    let time = performance.now();
     let morph = 0;
     let cooldown = cooldownTime;
+    let rafId = 0;
 
     const setMorph = (fraction: number) => {
       if (text1Ref.current && text2Ref.current) {
-        text2Ref.current.style.filter = `blur(${Math.min(8 / fraction - 8, 100)}px)`;
-        text2Ref.current.style.opacity = `${Math.pow(fraction, 0.4) * 100}%`;
+        // clamp to avoid division by zero / huge blur at the very start
+        const f2 = Math.max(fraction, 0.001);
+        text2Ref.current.style.filter = `blur(${Math.min(8 / f2 - 8, 100)}px)`;
+        text2Ref.current.style.opacity = `${Math.pow(f2, 0.4) * 100}%`;
 
-        fraction = 1 - fraction;
-        text1Ref.current.style.filter = `blur(${Math.min(8 / fraction - 8, 100)}px)`;
-        text1Ref.current.style.opacity = `${Math.pow(fraction, 0.4) * 100}%`;
+        const f1 = Math.max(1 - fraction, 0.001);
+        text1Ref.current.style.filter = `blur(${Math.min(8 / f1 - 8, 100)}px)`;
+        text1Ref.current.style.opacity = `${Math.pow(f1, 0.4) * 100}%`;
       }
     };
 
@@ -48,12 +51,12 @@ export function GooeyText({
       }
     };
 
-    const doMorph = () => {
-      morph -= cooldown;
+    const doMorph = (dt: number) => {
+      morph += dt; // advance by elapsed time
       cooldown = 0;
       let fraction = morph / morphTime;
 
-      if (fraction > 1) {
+      if (fraction >= 1) {
         cooldown = cooldownTime;
         fraction = 1;
       }
@@ -61,34 +64,32 @@ export function GooeyText({
       setMorph(fraction);
     };
 
-    function animate() {
-      requestAnimationFrame(animate);
-      const newTime = new Date();
-      const shouldIncrementIndex = cooldown > 0;
-      const dt = (newTime.getTime() - time.getTime()) / 1000;
-      time = newTime;
+    const animate = (now: number) => {
+      rafId = requestAnimationFrame(animate);
+      const dt = (now - time) / 1000;
+      time = now;
 
+      const shouldIncrementIndex = cooldown > 0;
       cooldown -= dt;
 
       if (cooldown <= 0) {
         if (shouldIncrementIndex) {
+          morph = 0;
           textIndex = (textIndex + 1) % texts.length;
           if (text1Ref.current && text2Ref.current) {
             text1Ref.current.textContent = texts[textIndex % texts.length];
             text2Ref.current.textContent = texts[(textIndex + 1) % texts.length];
           }
         }
-        doMorph();
+        doMorph(dt);
       } else {
         doCooldown();
       }
-    }
-
-    animate();
-
-    return () => {
-      // Cleanup function if needed
     };
+
+    rafId = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(rafId);
   }, [texts, morphTime, cooldownTime]);
 
   return (
@@ -117,9 +118,7 @@ export function GooeyText({
           className={cn(
             "absolute inline-block select-none text-center",
             "text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl",
-            "leading-tight",
-            "max-w-[90vw] break-words",
-            "text-foreground",
+            "leading-tight max-w-[90vw] break-words text-foreground",
             textClassName
           )}
         />
@@ -128,9 +127,7 @@ export function GooeyText({
           className={cn(
             "absolute inline-block select-none text-center",
             "text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl",
-            "leading-tight",
-            "max-w-[90vw] break-words",
-            "text-foreground",
+            "leading-tight max-w-[90vw] break-words text-foreground",
             textClassName
           )}
         />
