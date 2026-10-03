@@ -15,6 +15,7 @@ import {
   Quote,
   Route,
   ShieldCheck,
+  Trophy,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -29,6 +30,7 @@ const SECTIONS: Section[] = [
   { title: 'About', description: 'About page and stats', href: '/admin/about', icon: Info },
   { title: 'Events', description: 'Manage events & galleries', href: '/admin/events', icon: CalendarDays },
   { title: 'Team', description: 'Manage team members', href: '/admin/team', icon: Users },
+  { title: 'Achievements', description: 'Manage Hall of Fame wins', href: '/admin/hall-of-fame', icon: Trophy },
   { title: 'Timeline', description: 'Manage yearly journey', href: '/admin/timeline', icon: Route },
   { title: 'Testimony', description: 'Manage testimonials', href: '/admin/testimony', icon: Quote },
 ];

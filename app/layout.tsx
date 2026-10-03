@@ -19,10 +19,12 @@ const inter = Inter({
 });
 
 // Pass icon names as strings instead of components
+// (LayoutClient must know every icon name used here, including "Trophy")
 const navItems = [
   { name: "Home", url: "/", icon: "Home" },
   { name: "Events", url: "/Events", icon: "Swords" },
   { name: "Members", url: "/Team", icon: "UsersRound" },
+  { name: "Hall of Fame", url: "/hall-of-fame", icon: "Trophy" },
   { name: "Testimony", url: "/Testimony", icon: "Newspaper" },
 ];
 

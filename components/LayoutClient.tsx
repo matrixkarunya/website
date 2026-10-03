@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { NavBar } from "@/components/Navbar";
 import { Footer } from "@/components/footer";
-import { Home, Swords, UsersRound, Newspaper, LucideIcon } from "lucide-react";
+import { Home, Swords, UsersRound, Newspaper, Trophy, LucideIcon } from "lucide-react";
 
 // Map icon names to components
 const iconMap: Record<string, LucideIcon> = {
@@ -11,6 +11,7 @@ const iconMap: Record<string, LucideIcon> = {
   Swords,
   UsersRound,
   Newspaper,
+  Trophy,
 };
 
 export default function LayoutClient({
@@ -23,10 +24,10 @@ export default function LayoutClient({
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith("/admin");
 
-  // Convert icon names to components
+  // Convert icon names to components (falls back to Home so an unknown name can never crash the nav)
   const navItemsWithIcons = navItems.map((item) => ({
     ...item,
-    icon: iconMap[item.icon],
+    icon: iconMap[item.icon] ?? Home,
   }));
 
   return (
